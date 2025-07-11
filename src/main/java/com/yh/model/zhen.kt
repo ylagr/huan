@@ -1,36 +1,10 @@
 package com.yh.model
 
+import com.yh.debug
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
 
-
-data class ZhenChai(val zhenZigenList: List<Zigen>, val cjk: Cjk) {
-    val code: String
-
-    init {
-        val totalLen = 4;
-        val codeSb = StringBuilder()
-        val firstZigen = zhenZigenList[0]
-
-        codeSb.append(firstZigen.bianma.value)
-        for (i in 1..zhenZigenList.size - 2) {
-            codeSb.append(zhenZigenList[i].bianma.value.toCharArray()[0])
-            if (codeSb.length == totalLen - 1) {
-                break;
-            }
-        }
-        val lastIndex = zhenZigenList.size - 1
-        if (lastIndex > 0) {
-            if (codeSb.length == totalLen - 1) {
-                codeSb.append(zhenZigenList[lastIndex].bianma.value.toCharArray()[0])
-            } else {
-                codeSb.append(zhenZigenList[lastIndex].bianma.value)
-            }
-        }
-        code = codeSb.toString()
-    }
-}
 
 data class ZhenSource(val cjk: Cjk, val bianMa: Bianma) {
 
@@ -55,7 +29,7 @@ class ZhenSourceCtx {
                         val allTexts = textPattern.findAll(it).map { it.value }.toList()
                         zhenSourceMap
                             .computeIfAbsent(allTexts[0].toCjk()) { mutableListOf() }
-                            .add(ZhenSource(allTexts[0].toCjk(), allTexts[1].toBianMa()))
+                            .add(ZhenSource(allTexts[0].toCjk(), allTexts[1].toBianma()))
                     }
                 }
             }
@@ -66,8 +40,8 @@ class ZhenSourceCtx {
     fun check(zhenChaiCtx: ZhenChaiCtx) {
         for (entry in this.zhenSourceMap) {
             var checkErr = true
-
             zhenChaiCtx.zhenZhcharMap[entry.key]?.forEach {
+
                 for (source in entry.value) {
                     if (it.code == source.bianMa.value) {
                         checkErr = false
@@ -97,13 +71,13 @@ class ZhenSourceCtx {
 
 class ZhenChaiCtx {
     // 汉字拆分
-    val zhenZhcharMap: Map<Cjk, List<ZhenChai>>
+    val zhenZhcharMap: Map<Cjk, List<Chai>>
 
     // key: 字根编码
     val zhenZigenEncodeMap: Map<Bianma, Set<Zigen>>
 
     //  key：字根zhCode
-    val zhenZigenZhcodeMap: Map<CharPart, Set<Zigen>>
+    val zhenZigenZhcodeMap: Map<CharPart, Zigen>
 
     // value 字根编码
     val zigenEncodeSet: Set<Bianma>
@@ -115,27 +89,41 @@ class ZhenChaiCtx {
         zhenZhcharMap = parse()
 
         val zhenZigenEncodeMapMut = mutableMapOf<Bianma, MutableSet<Zigen>>()
-        val zhenZigenZhcodeMapMut = mutableMapOf<CharPart, MutableSet<Zigen>>()
+        val zhenZigenZhcodeMapMut = mutableMapOf<CharPart, Zigen>()
         val zigenEncodeSetMut = mutableSetOf<Bianma>()
         val zigenZhcodeSetMut = mutableSetOf<CharPart>()
 
         for (entry in zhenZhcharMap) {
             entry.value.forEach { chai ->
                 val zhChar = chai.cjk
-                if (chai.zhenZigenList.size == 1) {
+                if (chai.zigenList.size == 1) {
                     zigenZhcodeSetMut.add(zhChar.char.toCharPart())
-                    zhenZigenZhcodeMapMut
-                        .computeIfAbsent(zhChar.char.toCharPart()) { mutableSetOf<Zigen>() }
-                        .add(chai.zhenZigenList[0])
+                    val zigen = chai.zigenList[0]
+                    val old = zhenZigenZhcodeMapMut.put(zhChar.char.toCharPart(), chai.zigenList[0])
+                    if (old != null && old != zigen) {
+                        println("error: $old zigen repeat")
+                    }
+                    //                    val zigenSet = zhenZigenZhcodeMapMut
+//                        .computeIfAbsent(zhChar.char.toCharPart()) { mutableSetOf<Zigen>() }
+//                    zigenSet.add(chai.zhenZigenList[0])
+//                    if (zigenSet.size > 1) {
+//                        println("err zigen size > 1")
+//                    }
                 }
-                chai.zhenZigenList.forEach { zigen ->
+                chai.zigenList.forEach { zigen ->
                     zhenZigenEncodeMapMut
                         .computeIfAbsent(zigen.bianma) { mutableSetOf<Zigen>() }
                         .add(zigen)
-                    zhenZigenZhcodeMapMut
-                        .computeIfAbsent(zigen.charPart) { mutableSetOf<Zigen>() }
-                        .add(zigen)
-
+//                    val zigenSet = zhenZigenZhcodeMapMut
+//                        .computeIfAbsent(zigen.charPart) { mutableSetOf<Zigen>() }
+//                    zigenSet.add(zigen)
+//                    if (zigenSet.size > 1) {
+//                        println("err zigen size > 1")
+//                    }
+                    val old = zhenZigenZhcodeMapMut.put(zigen.charPart, zigen)
+                    if (old != null && old != zigen) {
+                        println("error: $old zigen repeat")
+                    }
                     zigenEncodeSetMut.add(zigen.bianma)
                     zigenZhcodeSetMut.add(zigen.charPart)
                 }
@@ -149,8 +137,8 @@ class ZhenChaiCtx {
 
     ///    丂	一㇉ [ k x ]
     ///蘒	艹禾⺈{龜下} / 艹禾丿{龜下} [ f td qv px / f td t px ]
-    private fun parse(): Map<Cjk, List<ZhenChai>> {
-        val zhenChaiMap = mutableMapOf<Cjk, MutableList<ZhenChai>>()
+    private fun parse(): Map<Cjk, List<Chai>> {
+        val chaiMap = mutableMapOf<Cjk, MutableList<Chai>>()
         val zhSplit = classLoader.getResourceAsStream("真码拆分.txt")
         zhSplit?.use {
             BufferedReader(InputStreamReader(it, StandardCharsets.UTF_8)).use {
@@ -178,35 +166,39 @@ class ZhenChaiCtx {
                             val char = matchResult.groups["char"]?.value ?: ""
                             val text = matchResult.groups["text"]?.value ?: ""
                             val letters = matchResult.groups["letters"]?.value ?: ""
-                            println("\n原始字符串: $it")
-                            println("字符: '$char'")
-                            if (char == "嚇") {
-                                print("char: $char")
+                            if (debug) {
+                                println("\n原始字符串: $it")
+                                println("字符: '$char'")
+                                if (char == "嚇") {
+                                    print("char: $char")
+                                }
+                                println("文字部分: '$text'")
+                                println("字母部分: '$letters'")
                             }
-                            println("文字部分: '$text'")
-                            println("字母部分: '$letters'")
                             val allTexts = textPattern.findAll(text).map { it.value }.toList()
                             // 提取所有字母（不依赖split）
                             val allLetters = letterRegex.findAll(letters).map { it.value }.toList()
 
                             var letterIndex = 0
-                            val zhenChaiList = mutableListOf<ZhenChai>()
+                            val chaiList = mutableListOf<Chai>()
                             allTexts.forEach {
                                 val zhenZigenList = mutableListOf<Zigen>()
                                 val zigenStrList = zigenPattern.findAll(it).map { it.value }.toList()
                                 for (i in zigenStrList.indices) {
-                                    println("第 $i 个字根=${zigenStrList[i]},第 $i 个字根编码=${allLetters[letterIndex]}")
+                                    if (debug) {
+                                        println("第 $i 个字根=${zigenStrList[i]},第 $i 个字根编码=${allLetters[letterIndex]}")
+                                    }
                                     zhenZigenList.add(
                                         Zigen(
-                                            allLetters[letterIndex].toBianMa(),
+                                            allLetters[letterIndex].toBianma(),
                                             zigenStrList[i].toCharPart()
                                         )
                                     )
                                     letterIndex++
                                 }
-                                zhenChaiList.add(ZhenChai(zhenZigenList, char.toCjk()))
+                                chaiList.add(Chai(zhenZigenList, char.toCjk()))
                             }
-                            zhenChaiMap[char.toCjk()] = zhenChaiList
+                            chaiMap[char.toCjk()] = chaiList
                         } else {
                             println("\n!!!!无法解析字符串: $it")
                             hasErr = true
@@ -215,16 +207,16 @@ class ZhenChaiCtx {
                 }
                 println()
                 println(pattern)
+                println(blankPattern.toString())
                 if (hasErr) {
                     println()
-                    println(blankPattern.toString())
                     throw Exception("解析错误？？？？？")
                 } else {
                     println("解析成功")
                 }
             }
         }
-        return zhenChaiMap
+        return chaiMap
     }
 }
 
@@ -259,10 +251,12 @@ fun checkZhSplit() {
             val text = matchResult.groups["text"]?.value ?: ""
             val letters = matchResult.groups["letters"]?.value ?: ""
 
-            println("\n原始字符串: $it")
-            println("字符: '$char'")
-            println("文字部分: '$text'")
-            println("字母部分: '$letters'")
+            if (debug) {
+                println("\n原始字符串: $it")
+                println("字符: '$char'")
+                println("文字部分: '$text'")
+                println("字母部分: '$letters'")
+            }
             val textPattern =
                 """([^$blankPattern/]+)""".toRegex()
             val allTexts = textPattern.findAll(text).map { it.value }.toList()

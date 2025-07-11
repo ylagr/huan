@@ -4,8 +4,16 @@ fun String.toCharPart(): CharPart {
     return CharPart(this)
 }
 
-fun String.toBianMa(): Bianma {
+fun String.toBianma(): Bianma {
     return Bianma(this)
+}
+
+fun CharPart.toCjk(): Cjk {
+    return Cjk.ofChar(this.value)
+}
+
+fun Cjk.toCharPart(): CharPart {
+    return CharPart(this.char)
 }
 
 data class CharPart(val value: String) {}

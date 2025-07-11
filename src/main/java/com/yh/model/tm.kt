@@ -12,7 +12,7 @@ object TmChaiConsts {
         """[$blankPattern]+""".toRegex()
 }
 
-data class TmChai(val char: Cjk, val chai: String, val ids: Ids = mkIds(char, chai)) {
+data class IdsChai(val char: Cjk, val chai: String, val ids: Ids = mkIds(char, chai)) {
     companion object {
         fun mkIds(char: Cjk, chai: String): Ids {
 //            print(char.char)
@@ -24,8 +24,8 @@ data class TmChai(val char: Cjk, val chai: String, val ids: Ids = mkIds(char, ch
 
 data class Tm(val line: String) {
     val cjk: Cjk
-    val chai: List<TmChai>
-    fun toStr(newChai: List<TmChai>): String {
+    val chai: List<IdsChai>
+    fun toStr(newChai: List<IdsChai>): String {
         return """${cjk.unicode} ${cjk.char} ${newChai.joinToString(" ") { it.ids.idsStr }}"""
     }
 
@@ -42,7 +42,7 @@ data class Tm(val line: String) {
 //                """
 //            )
             cjk = Cjk.ofUnicode(unicode?.value!!)
-            chai = chaiStr?.value?.split(splitPattern)!!.map { TmChai(cjk, it) }
+            chai = chaiStr?.value?.split(splitPattern)!!.map { IdsChai(cjk, it) }
         } else {
             println("解析错误:$line")
             throw Exception("解析错误:$line")
@@ -51,7 +51,15 @@ data class Tm(val line: String) {
 }
 
 class TmChaiCtx(val tmList: List<Tm>) {
+    private val chaiMutMap = mutableMapOf<Cjk, MutableList<IdsChai>>()
+    val chaiMap: Map<Cjk, List<IdsChai>> = chaiMutMap
 
+    init {
+        for (tm in tmList) {
+            chaiMutMap.computeIfAbsent(tm.cjk) { mutableListOf() }
+                .addAll(tm.chai)
+        }
+    }
 }
 
 fun main() {
@@ -79,7 +87,7 @@ fun main() {
                 val newChai = tm.chai.map {
                     val nIds = it.ids.revert("辶".toCharPart())
                         .revert("廴".toCharPart())
-                    TmChai(tm.cjk, nIds.idsStr, nIds)
+                    IdsChai(tm.cjk, nIds.idsStr, nIds)
                 }
                 it.println(tm.toStr(newChai))
             }

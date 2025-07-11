@@ -1,7 +1,49 @@
 package com.yh.model
 
+import com.yh.debug
 import java.util.*
 
+fun Ids.toZigenList(
+    zigenMap: Map<CharPart, Zigen>,
+    cjkMap: Map<Cjk, List<IdsChai>>,
+    extendChaiCtx: ChaiCtx
+): List<Zigen> {
+    val zigenList = mutableListOf<Zigen>()
+    this.idsTree.forEach { node ->
+        if (node is Ids.IdsNode) {
+            return@forEach;
+        }
+        if (node is Ids.CharNode) {
+            val z = zigenMap[node.char]
+            if (z == null) {
+                // cycle parse
+                val nz = extendChaiCtx.zigenMap[node.char]
+                if (nz != null) {
+                    zigenList.add(nz)
+                    return@forEach;
+                }
+                val nb = cjkMap[node.char.toCjk()]
+                if (nb == null) {
+                    println("error : ${node.char} can't find zigen set")
+                    return@forEach
+                }
+                // real code
+                val chaiStack = Stack<Chai>()
+                nb.get(0)
+                while (chaiStack.isNotEmpty()) {
+
+                }
+                return@forEach
+            } else {
+                zigenList.add(z)
+            }
+            return@forEach;
+        }
+        throw Exception("error: un support node type: $node ")
+    }
+
+    return zigenList
+}
 
 data class Ids(val char: Cjk, val idsStr: String, val idsTree: IdsTree = IdsTree(idsStr)) {
     fun revert(charPart: CharPart): Ids {
@@ -10,7 +52,7 @@ data class Ids(val char: Cjk, val idsStr: String, val idsTree: IdsTree = IdsTree
         return Ids(char, ids.idsTree.toIdsStr())
     }
 
-    data class IdsTree(val idsStr: String) {
+    data class IdsTree(val idsStr: String) : Iterable<Node> {
         companion object {
             val identifierMap: Map<Cjk, Byte> = mapOf(
                 "⿰".toCjk() to 2,
@@ -32,14 +74,24 @@ data class Ids(val char: Cjk, val idsStr: String, val idsTree: IdsTree = IdsTree
             val locatePattern = """(?<locate>\[.*?])""".toRegex()
         }
 
-        var locate: String? = null
-        var idsTreeNode: Node? = null
+        private var locate: String? = null
+        private var rootNode: Node? = null
+        private val nodeList: MutableList<Node> = mutableListOf()
+        fun getRootNode(): Node? {
+            return rootNode
+        }
+
+        fun getLocate(): String? {
+            return locate
+        }
 
         init {
             val idsStrList = idsPattern.findAll(idsStr)
                 .map { it.value }
                 .toList()
-            println(idsStrList)
+            if (debug) {
+                println(idsStrList)
+            }
             idsStrList.forEach { it ->
                 if (it.startsWith("[")) {
                     val locate = locatePattern.find(idsStr)
@@ -47,32 +99,40 @@ data class Ids(val char: Cjk, val idsStr: String, val idsTree: IdsTree = IdsTree
                     return@forEach
                 } else {
                     val cjk = it.toCjk()
-                    if (idsTreeNode == null) {
+                    if (rootNode == null) {
                         if (identifierMap.contains(cjk)) {
-                            idsTreeNode = IdsNode(cjk)
+                            rootNode = IdsNode(cjk)
                         } else {
-                            idsTreeNode = CharNode(it.toCharPart())
+                            rootNode = CharNode(it.toCharPart())
                         }
+                        nodeList.add(rootNode!!)
                     } else {
+                        var curNode: Node
                         if (identifierMap.contains(cjk)) {
-                            idsTreeNode?.add(IdsNode(cjk));
+                            curNode = IdsNode(cjk)
                         } else {
-                            idsTreeNode?.add(CharNode(it.toCharPart()))
+                            curNode = CharNode(it.toCharPart())
                         }
+                        rootNode?.add(curNode)
+                        nodeList.add(curNode)
                     }
                 }
             }
         }
 
+        override fun iterator(): Iterator<Node> {
+            return nodeList.iterator()
+        }
+
         fun revert(charPart: CharPart): IdsTree {
-            if (idsTreeNode is IdsNode) {
-                (idsTreeNode as IdsNode).revert(charPart)
+            if (rootNode is IdsNode) {
+                (rootNode as IdsNode).revert(charPart)
             }
             return this
         }
 
         fun toIdsStr(): String {
-            val a = idsTreeNode?.run { dfs(this) }
+            val a = rootNode?.run { dfs(this) }
             locate?.let {
                 a?.append(it)
             }
@@ -240,7 +300,7 @@ fun check2() {
     val idsStr = "⿸尸⿺{㢟右}辶[U]"
     val idsStr2 = "⿸尸⿺辶{㢟右}[U]"
     val ids = Ids("\uD847\uDC66".toCjk(), idsStr)
-    val idsRoot = ids.idsTree.idsTreeNode
+    val idsRoot = ids.idsTree.getRootNode()
     println(idsRoot == Ids.IdsNode("⿸".toCjk()))
     val idsFirst = (idsRoot as Ids.IdsNode).children[0]
     println(idsFirst == Ids.CharNode("尸".toCharPart()))
@@ -250,7 +310,7 @@ fun check2() {
     println(idsSecondFirst == Ids.CharNode("{㢟右}".toCharPart()))
     val idsSecondSecond = (idsSecond as Ids.IdsNode).children[1]
     println(idsSecondSecond == Ids.CharNode("辶".toCharPart()))
-    println(ids.idsTree.locate == "[U]")
+    println(ids.idsTree.getLocate() == "[U]")
     println(ids.revert("辶".toCharPart()).idsStr == idsStr2)
 
 }
@@ -259,7 +319,7 @@ fun check1() {
     val idsStr = "⿺⿱火⿰\uD840\uDC87十辶[HTJK]"
     val idsStr2 = "⿺辶⿱火⿰\uD840\uDC87十[HTJK]"
     val ids = Ids("䢠".toCjk(), idsStr)
-    val idsRoot = ids.idsTree.idsTreeNode
+    val idsRoot = ids.idsTree.getRootNode()
     val root = Ids.IdsNode("⿺".toCjk())
     println(idsRoot == root)
     val idsFirst = (idsRoot as Ids.IdsNode).children[0]
@@ -274,7 +334,7 @@ fun check1() {
     println(idsFirstSecondSecond == Ids.CharNode("十".toCharPart()))
     val idsSecond = idsRoot.children[1]
     println(idsSecond == Ids.CharNode("辶".toCharPart()))
-    println(ids.idsTree.locate == "[HTJK]")
+    println(ids.idsTree.getLocate() == "[HTJK]")
     println(ids.revert("辶".toCharPart()).idsStr == idsStr2)
 
 }
